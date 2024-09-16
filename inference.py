@@ -40,6 +40,9 @@ class DataArguments:
     misconception_mapping: str = field(
         default="data/misconception_mapping.csv", metadata={"help": "Path to the misconception mapping."}
     )
+    template: str = field(
+        default="{ConstructName} {QuestionText} {Answer}", metadata={"help": "Template for the input text."}
+    )
 
 
 @dataclass
@@ -78,7 +81,7 @@ def main():
     # prepare data
     # TODO: Inference for test data.
     train_dataset = Dataset.from_csv(data_args.train_data_path)
-    preprocess = plain_processor(tokenizer, model_args.model_max_length)
+    preprocess = plain_processor(tokenizer, model_args.model_max_length, template=data_args.template)
     train_dataset = train_dataset.map(preprocess, batched=True, remove_columns=train_dataset.column_names)
     train_dataset = train_dataset.filter(lambda x: x["labels"] is not None) # remove None
 
