@@ -101,7 +101,7 @@ def main():
     sorted_indices = sorted_indices[:, :25].tolist()
     labels = [[e] for e in train_dataset["labels"]]
     map25_score = mapk(labels, sorted_indices, k=25)
-    print(f"MAP@25: {map25_score}")
+    print(f"MAP@25: {map25_score:.4f}")
 
 if __name__ == "__main__":
     main()
