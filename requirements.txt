@@ -1,0 +1,8 @@
+transformers
+datasets==2.18.0
+peft==0.11.1
+accelerate==0.30.1
+deepspeed
+scikit-learn
+tensorboardX
+bitsandbytes

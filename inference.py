@@ -12,9 +12,13 @@ from transformers import (
     HfArgumentParser,
     AutoTokenizer,
     AutoModel,
+    DataCollatorWithPadding,
 )
 
-from datasets.dataset_v1 import plain_processor, misconception_processor
+from utils import mapk
+from text_processor.processor_v1 import plain_processor, misconception_processor
+
+from sklearn.metrics.pairwise import cosine_similarity
 
 @dataclass
 class ModelArguments:
@@ -40,18 +44,18 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments:
-    output_dir: str = field(default="output", metadata={"help": "The output directory where the model predictions and checkpoints will be written."})
     batch_size: int = field(default=8, metadata={"help": "Batch size per GPU for inference."})
 
 
 @torch.no_grad()
 @torch.cuda.amp.autocast()
-def inference(model, dataset, batch_size: int = 8):
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+def inference(model, dataset, data_collator, batch_size: int = 8):
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=data_collator)
     embeddings = []
     for batch in tqdm(data_loader):
         if "labels" in batch.keys():
             batch.pop("labels")
+        batch = {k: v.to(model.device) for k, v in batch.items()}
         sentence_embeddings = model(**batch)[0][:, 0]
         sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
         embeddings.append(sentence_embeddings.detach().cpu().numpy())
@@ -74,13 +78,30 @@ def main():
     # prepare data
     # TODO: Inference for test data.
     train_dataset = Dataset.from_csv(data_args.train_data_path)
-    preprocess = plain_processor(train_dataset, tokenizer, model_args.model_max_length)
+    preprocess = plain_processor(tokenizer, model_args.model_max_length)
     train_dataset = train_dataset.map(preprocess, batched=True, remove_columns=train_dataset.column_names)
+    train_dataset = train_dataset.filter(lambda x: x["labels"] is not None) # remove None
 
     misconception_mapping = Dataset.from_csv(data_args.misconception_mapping)
-    mis_preprocess = misconception_processor(misconception_mapping, tokenizer, model_args.model_max_length)
+    mis_preprocess = misconception_processor(tokenizer, model_args.model_max_length)
     misconception_mapping = misconception_mapping.map(mis_preprocess, batched=True, remove_columns=misconception_mapping.column_names)
     
     # inference
-    train_embeddings = inference(model, train_dataset, batch_size=training_args.batch_size)
-    misconception_embeddings = inference(model, misconception_mapping, batch_size=training_args.batch_size)
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+    train_embeddings = inference(
+        model, train_dataset, batch_size=training_args.batch_size, data_collator=data_collator
+    )
+    misconception_embeddings = inference(
+        model, misconception_mapping, batch_size=training_args.batch_size, data_collator=data_collator
+    )
+
+    # calculate cosine similarity
+    cos_sim_arr = cosine_similarity(train_embeddings, misconception_embeddings)
+    sorted_indices = np.argsort(-cos_sim_arr, axis=1)
+    sorted_indices = sorted_indices[:, :25].tolist()
+    labels = [[e] for e in train_dataset["labels"]]
+    map25_score = mapk(labels, sorted_indices, k=25)
+    print(f"MAP@25: {map25_score}")
+
+if __name__ == "__main__":
+    main()
