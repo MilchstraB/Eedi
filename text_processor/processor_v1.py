@@ -9,9 +9,11 @@ class plain_processor:
         self,
         tokenizer: AutoTokenizer,
         max_length: int,
+        template: Optional[str] = "{ConstructName} {QuestionText} {Answer}",
     ):
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.template = template
 
     def preprocess_batch(self, batch_data: Dict[str, List[str]]):
         subject_name = batch_data["SubjectName"]
@@ -23,7 +25,13 @@ class plain_processor:
     def format_texts(self, subject_name, contruct_name, question_text, answer_text):
         texts = []
         for subj, cont, ques, ans in zip(subject_name, contruct_name, question_text, answer_text):
-            text = f"{cont} {ques} {ans}"
+            data_dic = {
+                "SubjectName": subj,
+                "ConstructName": cont,
+                "QuestionText": ques,
+                "Answer": ans,
+            }
+            text = self.template.format_map(data_dic)
             texts.append(text)
         return texts
     
