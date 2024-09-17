@@ -44,6 +44,12 @@ def mapk(actual, predicted, k=25):
     return np.mean([apk(a,p,k) for a,p in zip(actual, predicted)])
 
 
+def recall(predictions, labels):
+    labels = [i[0] for i in labels]
+    acc_num = np.sum([1 for x, y in zip(predictions, labels) if y in x])
+    return acc_num / len(predictions)
+
+
 def print_rank_0(message):
     """If distributed is initialized, print only on rank 0."""
     if torch.distributed.is_initialized():
