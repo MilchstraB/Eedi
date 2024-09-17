@@ -15,7 +15,7 @@ from transformers import (
     DataCollatorWithPadding,
 )
 
-from utils import mapk
+from utils import mapk, recall
 from text_processor.processor_v1 import plain_processor, misconception_processor
 
 from sklearn.metrics.pairwise import cosine_similarity
@@ -104,7 +104,8 @@ def main():
     sorted_indices = sorted_indices[:, :25].tolist()
     labels = [[e] for e in train_dataset["labels"]]
     map25_score = mapk(labels, sorted_indices, k=25)
-    print(f"MAP@25: {map25_score:.4f}")
+    recall_score = recall(sorted_indices, labels)
+    print(f"MAP@25: {map25_score:.4f}, Recall: {recall_score:.4f}")
 
 if __name__ == "__main__":
     main()
