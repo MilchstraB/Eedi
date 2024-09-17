@@ -12,6 +12,12 @@ deepspeed train_reranker.py \
     --lora_dropout 0.05 \
     --lora_target "[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\", \"gate_proj\", \"up_proj\", \"down_proj\"]" \
     --gradient_checkpointing True \
+    --save_strategy "steps" \
+    --save_steps 0.2 \
+    --save_only_model True \
+    --save_total_limit 2 \
+    --load_best_model_at_end True \
+    --metric_for_best_model "loss" \
     --eval_steps 0.2 \
     --eval_strategy "steps" \
     --bf16_full_eval True \
@@ -23,7 +29,6 @@ deepspeed train_reranker.py \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 2 \
-    --save_strategy "epoch" \
     --learning_rate 2e-4 \
     --lr_scheduler_type "cosine" \
     --run_name reranker_fold_1
