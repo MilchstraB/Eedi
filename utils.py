@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 
 
@@ -41,3 +42,39 @@ def mapk(actual, predicted, k=25):
     """
 
     return np.mean([apk(a,p,k) for a,p in zip(actual, predicted)])
+
+
+def print_rank_0(message):
+    """If distributed is initialized, print only on rank 0."""
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == 0:
+            print(message, flush=True)
+    else:
+        print(message, flush=True)
+
+
+def get_optimizer_grouped_parameters(model, base_lr, score_lr, weight_decay):
+    no_decay = ["bias", "layernorm"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [p for n, p in model.named_parameters() if "score" in n and not any(nd in n for nd in no_decay)],
+            "lr": score_lr,
+            "weight_decay": weight_decay,
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if "score" in n and any(nd in n for nd in no_decay)],
+            "lr": score_lr,
+            "weight_decay": 0.0,
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if "score" not in n and not any(nd in n for nd in no_decay)],
+            "lr": base_lr,
+            "weight_decay": weight_decay,
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if "score" not in n and any(nd in n for nd in no_decay)],
+            "lr": base_lr,
+            "weight_decay": 0.0,
+        },
+    ]
+    return optimizer_grouped_parameters
