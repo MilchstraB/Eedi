@@ -10,7 +10,7 @@ deepspeed train_reranker.py \
     --lora_r 16 \
     --lora_alpha 32 \
     --lora_dropout 0.05 \
-    --lora_target "all-linear" \
+    --lora_target "[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\", \"gate_proj\", \"up_proj\", \"down_proj\"]" \
     --gradient_checkpointing True \
     --eval_steps 0.2 \
     --eval_strategy "steps" \
