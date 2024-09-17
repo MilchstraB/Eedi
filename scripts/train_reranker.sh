@@ -12,6 +12,7 @@ deepspeed train_reranker.py \
     --lora_dropout 0.05 \
     --lora_target "[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\", \"gate_proj\", \"up_proj\", \"down_proj\"]" \
     --gradient_checkpointing True \
+    --overwrite_output_dir True \
     --save_strategy "steps" \
     --save_steps 0.2 \
     --save_only_model True \
