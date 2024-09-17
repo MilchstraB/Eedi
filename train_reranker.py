@@ -1,5 +1,4 @@
 import os
-import json
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -22,6 +21,8 @@ from sklearn.metrics import accuracy_score, log_loss
 from utils import print_rank_0, get_optimizer_grouped_parameters
 from text_processor.reranker_processor import reranker_processor
 
+os.environ["WANDB_PROJECT"] = "eedi"
+
 
 @dataclass
 class ModelArguments:
@@ -36,9 +37,6 @@ class DataArguments:
     )
     val_data_path: str = field(
         default="data/split/val.csv", metadata={"help": "Path to the validation data."}
-    )
-    test_data_path: str = field(
-        default="data/split/test.csv", metadata={"help": "Path to the test data."}
     )
     max_length: int = field(
         default=1024,
@@ -62,13 +60,11 @@ class TrainingArguments(TrainingArguments):
     lora_dropout: float = field(default=0.05)
     lora_bias: str = "none"
     lora_target: str = field(default="all-linear")
-    freeze_layers: Optional[int] = field(default=None)
 
     gradient_checkpointing: bool = field(default=True)
     eval_steps: float = field(default=0.2)
     eval_strategy: str = field(default="steps")
-    save_strategy: str = field(default="steps")
-    bf16_full_eval: bool = field(default=True)
+    bf16_full_eval: bool = field(default=False)
     output_dir: str = field(default="output")
     group_by_length: bool = field(default=False)
 
@@ -77,7 +73,6 @@ class TrainingArguments(TrainingArguments):
     logging_steps: float = field(default=0.005)
     report_to: str = field(default="wandb")
 
-    torch_compile: bool = field(default=True)
     pretrain_lora: str = field(default=None)
 
 
@@ -135,7 +130,6 @@ def train():
     # prepare data
     train_dataset = Dataset.from_json(data_args.train_data_path)
     val_dataset = Dataset.from_json(data_args.val_data_path)
-    test_dataset = Dataset.from_json(data_args.test_data_path)
 
     preprocess = reranker_processor(tokenizer, max_length=data_args.max_length, template=data_args.template)
     train_dataset = train_dataset.map(
@@ -148,12 +142,6 @@ def train():
         preprocess,
         batched=True,
         remove_columns=val_dataset.column_names,
-        load_from_cache_file=False,
-    )
-    test_dataset = test_dataset.map(
-        preprocess,
-        batched=True,
-        remove_columns=test_dataset.column_names,
         load_from_cache_file=False,
     )
 
@@ -182,10 +170,7 @@ def train():
 
     trainer.train()
     val_result = trainer.evaluate(val_dataset, metric_key_prefix="val")
-
-    test_result = trainer.evaluate(test_dataset, metric_key_prefix="test")
-    with open(os.path.join(training_args.output_dir, "result.json"), "w") as f:
-        json.dump([test_result, val_result], f)
+    print_rank_0(f"Val result: {val_result}")
 
 
 if __name__ == "__main__":
