@@ -110,6 +110,10 @@ def train():
     if "llama" in model_args.model_name_or_path.lower():
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.pad_token_id
+        
+    if "qwen" in model_args.model_name_or_path.lower():
+        tokenizer.pad_token = "<|endoftext|>"
+        model.config.pad_token_id = tokenizer.pad_token_id
 
     if training_args.lora_enable:
         lora_config = LoraConfig(
