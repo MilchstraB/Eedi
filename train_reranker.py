@@ -90,6 +90,9 @@ def train():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     training_args.output_dir = os.path.join(training_args.output_dir, training_args.run_name)
 
+    if training_args.lora_target != "all-linear":
+        training_args.lora_target = eval(training_args.lora_target)
+
     training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
 
     # prepare tokenizer and model
@@ -110,7 +113,7 @@ def train():
     if "llama" in model_args.model_name_or_path.lower():
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.pad_token_id
-        
+    
     if "qwen" in model_args.model_name_or_path.lower():
         tokenizer.pad_token = "<|endoftext|>"
         model.config.pad_token_id = tokenizer.pad_token_id
