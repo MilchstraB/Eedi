@@ -182,7 +182,10 @@ def train():
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         compute_metrics=compute_metrics,
-        data_collator=EmbedCollator(tokenizer=tokenizer),
+        data_collator=EmbedCollator(
+            tokenizer=tokenizer, 
+            max_length=data_args.max_length
+        ),
     )
 
 
