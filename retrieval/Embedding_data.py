@@ -59,9 +59,6 @@ class EmbedCollator(DataCollatorWithPadding):
     and pass batch separately to the actual collator.
     Abstract out data detail for the model.
     """
-    query_max_len: int = 32
-    passage_max_len: int = 128
-
     def padding_score(self, teacher_score):
         group_size = None
         for scores in teacher_score:
@@ -103,18 +100,18 @@ class EmbedCollator(DataCollatorWithPadding):
 
         q_collated = self.tokenizer(
             query,
-            padding=True,
+            padding="longest",
             truncation=True,
-            max_length=self.query_max_len,
+            max_length=self.max_length,
             return_tensors="pt",
         )
         q_collated = self.mask_pad_token(q_collated)
 
         d_collated = self.tokenizer(
             passage,
-            padding=True,
+            padding="longest",
             truncation=True,
-            max_length=self.passage_max_len,
+            max_length=self.max_length,
             return_tensors="pt",
         )
         d_collated = self.mask_pad_token(d_collated)
