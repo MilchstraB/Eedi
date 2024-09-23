@@ -79,7 +79,7 @@ class EmbedCollator(DataCollatorWithPadding):
 
 
     def mask_pad_token(self, q):
-        if random.random()>0.9:
+        if random.random() > 0.9:
             tensor = q['input_ids'].float()
             mask = torch.rand(tensor.shape)
             mask = (mask > 0.9).float()
