@@ -26,6 +26,7 @@ class BiEncoderModel(nn.Module):
         self.temperature = temperature
         self.use_inbatch_neg = use_inbatch_neg
         self.config = self.model.config
+        self.device = self.model.device
 
         if not normlized:
             self.temperature = 1.0
@@ -77,6 +78,8 @@ class BiEncoderModel(nn.Module):
     def encode(self, features):
         if features is None:
             return None
+        
+        features = {k: v.to(self.model.device) for k, v in features.items()}
         psg_out = self.model(
             input_ids=features["input_ids"],
             attention_mask=features["attention_mask"],
