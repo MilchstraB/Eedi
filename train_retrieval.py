@@ -30,11 +30,24 @@ os.environ["WANDB_PROJECT"] = "eedi"
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-Math-1.5B-Instruct")
     add_eos_token: bool = field(default=False)
+
     normlized: bool = field(default=False)
     negatives_cross_device: bool = field(default=False)
     temperature: float = field(default=1.0)
     use_inbatch_neg: bool = field(default=True)
     sentence_pooling_method: str = field(default="last")
+
+    load_in_4bit: bool = field(default=False)
+    load_in_8bit: bool = field(default=False)
+
+    lora_enable: bool = field(default=True)
+    lora_r: int = field(default=16)
+    lora_alpha: int = field(default=32)
+    lora_dropout: float = field(default=0.05)
+    lora_bias: str = "none"
+    lora_target: str = field(default="all-linear")
+
+    pretrain_lora: str = field(default=None)
 
 
 @dataclass
@@ -61,13 +74,6 @@ class TrainingArguments(TrainingArguments):
     llrd_enable: bool = field(default=False)
     score_lr: float = field(default=None)
 
-    lora_enable: bool = field(default=True)
-    lora_r: int = field(default=16)
-    lora_alpha: int = field(default=32)
-    lora_dropout: float = field(default=0.05)
-    lora_bias: str = "none"
-    lora_target: str = field(default="all-linear")
-
     gradient_checkpointing: bool = field(default=True)
     eval_steps: float = field(default=0.2)
     eval_strategy: str = field(default="steps")
@@ -79,8 +85,6 @@ class TrainingArguments(TrainingArguments):
     warmup_ratio: float = field(default=0.05)
     logging_steps: float = field(default=0.005)
     report_to: str = field(default="wandb")
-
-    pretrain_lora: str = field(default=None)
 
 
 def compute_metrics(eval_preds: EvalPrediction) -> dict:
@@ -97,8 +101,8 @@ def train():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     training_args.output_dir = os.path.join(training_args.output_dir, training_args.run_name)
 
-    if training_args.lora_target != "all-linear":
-        training_args.lora_target = eval(training_args.lora_target)
+    if model_args.lora_target != "all-linear":
+        model_args.lora_target = eval(model_args.lora_target)
 
     training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
 
@@ -143,19 +147,19 @@ def train():
         tokenizer.pad_token = "<|endoftext|>"
         model.config.pad_token_id = tokenizer.pad_token_id
 
-    if training_args.lora_enable:
+    if model_args.lora_enable:
         lora_config = LoraConfig(
-            r=training_args.lora_r,
-            lora_alpha=training_args.lora_alpha,
-            target_modules=training_args.lora_target,
-            lora_dropout=training_args.lora_dropout,
-            bias=training_args.lora_bias,
+            r=model_args.lora_r,
+            lora_alpha=model_args.lora_alpha,
+            target_modules=model_args.lora_target,
+            lora_dropout=model_args.lora_dropout,
+            bias=model_args.lora_bias,
             task_type=TaskType.CAUSAL_LM,
         )
 
-        if training_args.pretrain_lora:
-            print_rank_0(f"Loading pretrain lora weight from {training_args.pretrain_lora}...")
-            model = PeftModel.from_pretrained(model, training_args.pretrain_lora, is_trainable=True)
+        if model_args.pretrain_lora:
+            print_rank_0(f"Loading pretrain lora weight from {model_args.pretrain_lora}...")
+            model = PeftModel.from_pretrained(model, model_args.pretrain_lora, is_trainable=True)
         else:
             model = get_peft_model(model, lora_config)
 
