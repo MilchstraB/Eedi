@@ -3,25 +3,20 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 import torch
-from torch.optim import AdamW
 import transformers
 from transformers import (
     AutoModel,
     AutoTokenizer,
-    DataCollatorWithPadding,
-    EvalPrediction,
     TrainingArguments,
     BitsAndBytesConfig,
 )
 
-from datasets import Dataset
 from peft import LoraConfig, TaskType, get_peft_model, PeftModel
-from sklearn.metrics import accuracy_score, log_loss
 
 from retrieval.Embedding_model import BiEncoderModel
+from retrieval.Embedding_data import TrainDatasetForEmbedding, EmbedCollator
 from retrieval.Embedding_trainer import RetrievalTrainer as Trainer
-from utils import print_rank_0, get_optimizer_grouped_parameters
-from text_processor.reranker_processor import reranker_processor
+from utils import print_rank_0, mapk, recall
 
 os.environ["WANDB_PROJECT"] = "eedi"
 
@@ -64,16 +59,12 @@ class DataArguments:
             "help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
         },
     )
-    template: str = field(
-        default="<|im_start|>{QUERY}\n\n{DOC}<|im_end|>", metadata={"help": "Template for the input text."}
-    )
+    query_instruction: str = field(default=None, metadata={"help": "Instruction before query."})
+    passage_instruction: str = field(default=None, metadata={"help": "Instruction before retrieval passages."})
 
 
 @dataclass
 class TrainingArguments(TrainingArguments):
-    llrd_enable: bool = field(default=False)
-    score_lr: float = field(default=None)
-
     gradient_checkpointing: bool = field(default=True)
     eval_steps: float = field(default=0.2)
     eval_strategy: str = field(default="steps")
@@ -87,13 +78,12 @@ class TrainingArguments(TrainingArguments):
     report_to: str = field(default="wandb")
 
 
-def compute_metrics(eval_preds: EvalPrediction) -> dict:
-    preds = eval_preds.predictions
-    labels = eval_preds.label_ids
-    probs = torch.from_numpy(preds).float().softmax(-1).numpy()
-    loss = log_loss(y_true=labels, y_pred=probs)
-    acc = accuracy_score(y_true=labels, y_pred=preds.argmax(-1))
-    return {"acc": acc, "log_loss": loss}
+def compute_metrics(preds, labels) -> dict:
+    group_size = len(preds[0])
+    mAP = mapk(labels, preds, group_size)
+    Recall = recall(preds, labels)
+
+    return {"mAP": mAP, "Recall": Recall}
 
 
 def train():
@@ -104,7 +94,7 @@ def train():
     if model_args.lora_target != "all-linear":
         model_args.lora_target = eval(model_args.lora_target)
 
-    training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
+    # training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
 
     # prepare tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(
@@ -154,7 +144,7 @@ def train():
             target_modules=model_args.lora_target,
             lora_dropout=model_args.lora_dropout,
             bias=model_args.lora_bias,
-            task_type=TaskType.CAUSAL_LM,
+            task_type=TaskType.FEATURE_EXTRACTION,
         )
 
         if model_args.pretrain_lora:
@@ -173,21 +163,15 @@ def train():
     )
 
     # prepare data
-    train_dataset = Dataset.from_json(data_args.train_data_path)
-    val_dataset = Dataset.from_json(data_args.val_data_path)
-
-    preprocess = reranker_processor(tokenizer, max_length=data_args.max_length, template=data_args.template)
-    train_dataset = train_dataset.map(
-        preprocess,
-        batched=True,
-        remove_columns=train_dataset.column_names,
-        load_from_cache_file=False,
+    train_dataset = TrainDatasetForEmbedding(
+        data_args,
+        tokenizer=tokenizer,
+        mode="train",
     )
-    val_dataset = val_dataset.map(
-        preprocess,
-        batched=True,
-        remove_columns=val_dataset.column_names,
-        load_from_cache_file=False,
+    val_dataset = TrainDatasetForEmbedding(
+        data_args,
+        tokenizer=tokenizer,
+        mode="val",
     )
 
 
@@ -198,19 +182,8 @@ def train():
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         compute_metrics=compute_metrics,
-        data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
+        data_collator=EmbedCollator(tokenizer=tokenizer),
     )
-
-
-    if training_args.llrd_enable:
-        optimizer_grouped_parameters = get_optimizer_grouped_parameters(
-            model,
-            base_lr=training_args.learning_rate,
-            score_lr=training_args.score_lr,
-            weight_decay=training_args.weight_decay,
-        )
-        optimizer = AdamW(optimizer_grouped_parameters)
-        trainer.optimizer = optimizer
 
 
     trainer.train()

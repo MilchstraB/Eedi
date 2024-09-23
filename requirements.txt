@@ -2,7 +2,7 @@ transformers
 datasets
 peft
 accelerate
-deepspeed
+deepspeed==0.14.4
 scikit-learn
 tensorboardX
 bitsandbytes
