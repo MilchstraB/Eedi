@@ -24,7 +24,6 @@ os.environ["WANDB_PROJECT"] = "eedi"
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-Math-1.5B-Instruct")
-    add_eos_token: bool = field(default=False)
 
     normlized: bool = field(default=False)
     negatives_cross_device: bool = field(default=False)
@@ -59,6 +58,7 @@ class DataArguments:
             "help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
         },
     )
+    add_eos_token: bool = field(default=True)
     query_instruction: str = field(default=None, metadata={"help": "Instruction before query."})
     passage_instruction: str = field(default=None, metadata={"help": "Instruction before retrieval passages."})
 
@@ -164,17 +164,8 @@ def train():
     )
 
     # prepare data
-    train_dataset = TrainDatasetForEmbedding(
-        data_args,
-        special_token=tokenizer.eos_token if model_args.add_eos_token else None,
-        mode="train",
-    )
-    val_dataset = TrainDatasetForEmbedding(
-        data_args,
-        special_token=tokenizer.eos_token if model_args.add_eos_token else None,
-        mode="val",
-    )
-
+    train_dataset = TrainDatasetForEmbedding(data_args, mode="train")
+    val_dataset = TrainDatasetForEmbedding(data_args, mode="val")
 
     trainer = Trainer(
         args=training_args,
@@ -184,7 +175,8 @@ def train():
         eval_dataset=val_dataset,
         compute_metrics=compute_metrics,
         data_collator=EmbedCollator(
-            tokenizer=tokenizer, 
+            tokenizer=tokenizer,
+            add_eos_token=data_args.add_eos_token,
             max_length=data_args.max_length
         ),
     )
