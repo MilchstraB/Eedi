@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer, DataCollatorWithPadding
 
 class TrainDatasetForEmbedding(Dataset):
-    def __init__(self, args, tokenizer: AutoTokenizer, mode="train"):
+    def __init__(self, args, special_token=None, mode="train"):
         data_path = args.train_data_path if mode == "train" else args.val_data_path
         
         if os.path.isdir(data_path):
@@ -25,7 +25,7 @@ class TrainDatasetForEmbedding(Dataset):
         else:
             self.dataset = datasets.load_dataset('json', data_files=data_path, split='train')
 
-        self.tokenizer = tokenizer
+        self.special_token = special_token
         self.args = args
         self.total_len = len(self.dataset)
 
@@ -48,6 +48,10 @@ class TrainDatasetForEmbedding(Dataset):
 
         if self.args.passage_instruction is not None:
             passages = [self.args.passage_instruction + p for p in passages]
+
+        if self.special_token is not None:
+            query = query + self.special_token
+            passages = [p + self.special_token for p in passages]
 
         return query, passages
     

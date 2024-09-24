@@ -97,11 +97,12 @@ def train():
     # training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
 
     # prepare tokenizer and model
+    # Since the add_eos_token method sometimes fails, we manually add the eos token.
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         padding_side="right",
         use_fast=True,
-        add_eos_token=model_args.add_eos_token,
+        # add_eos_token=model_args.add_eos_token,
     )
 
     bnb_config = None
@@ -165,12 +166,12 @@ def train():
     # prepare data
     train_dataset = TrainDatasetForEmbedding(
         data_args,
-        tokenizer=tokenizer,
+        special_token=tokenizer.eos_token if model_args.add_eos_token else None,
         mode="train",
     )
     val_dataset = TrainDatasetForEmbedding(
         data_args,
-        tokenizer=tokenizer,
+        special_token=tokenizer.eos_token if model_args.add_eos_token else None,
         mode="val",
     )
 
