@@ -157,3 +157,10 @@ class BiEncoderModel(nn.Module):
         all_tensors = torch.cat(all_tensors, dim=0)
 
         return all_tensors
+
+    def save_pretrained(self, save_directory, state_dict=None, safe_serialization=True):
+        self.model.save_pretrained(
+            save_directory, 
+            state_dict=state_dict, 
+            safe_serialization=safe_serialization
+        )
