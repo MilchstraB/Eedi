@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer, DataCollatorWithPadding
 
 class TrainDatasetForEmbedding(Dataset):
-    def __init__(self, args, special_token=None, mode="train"):
+    def __init__(self, args, mode="train"):
         data_path = args.train_data_path if mode == "train" else args.val_data_path
         
         if os.path.isdir(data_path):
@@ -25,7 +25,6 @@ class TrainDatasetForEmbedding(Dataset):
         else:
             self.dataset = datasets.load_dataset('json', data_files=data_path, split='train')
 
-        self.special_token = special_token
         self.args = args
         self.total_len = len(self.dataset)
 
@@ -49,10 +48,6 @@ class TrainDatasetForEmbedding(Dataset):
         if self.args.passage_instruction is not None:
             passages = [self.args.passage_instruction + p for p in passages]
 
-        if self.special_token is not None:
-            query = query + self.special_token
-            passages = [p + self.special_token for p in passages]
-
         return query, passages
     
 
@@ -63,6 +58,11 @@ class EmbedCollator(DataCollatorWithPadding):
     and pass batch separately to the actual collator.
     Abstract out data detail for the model.
     """
+    def __init__(self, tokenizer, add_eos_token=True, **kwargs):
+        super().__init__(tokenizer=tokenizer, **kwargs)
+        self.add_eos_token = add_eos_token
+        if add_eos_token: self.max_length -= 1
+    
     def padding_score(self, teacher_score):
         group_size = None
         for scores in teacher_score:
@@ -81,17 +81,27 @@ class EmbedCollator(DataCollatorWithPadding):
                 new_teacher_score.append(scores)
         return new_teacher_score
 
-
     def mask_pad_token(self, q):
         if random.random() > 0.9:
             tensor = q['input_ids'].float()
+
+            eos_token_id = self.tokenizer.eos_token_id
+            eos_mask = (tensor == eos_token_id).float() 
+            
             mask = torch.rand(tensor.shape)
-            mask = (mask > 0.9).float()
+            mask = (mask > 0.9).float() * (1 - eos_mask)
+            
             tensor = tensor * (1 - mask) + 2 * mask
             tensor = tensor.long()
             q['input_ids'] = tensor
         return q
 
+    def _add_eos_token(self, output):
+        for input_ids, attention_mask in zip(output['input_ids'], output['attention_mask']):
+            input_ids.append(self.tokenizer.eos_token_id)
+            attention_mask.append(1)
+
+        return output
 
     def __call__(self, features):
         query = [f[0] for f in features]
@@ -104,20 +114,22 @@ class EmbedCollator(DataCollatorWithPadding):
 
         q_collated = self.tokenizer(
             query,
-            padding="longest",
             truncation=True,
             max_length=self.max_length,
-            return_tensors="pt",
         )
+        if self.add_eos_token:
+            q_collated = self._add_eos_token(q_collated)
+        q_collated = self.tokenizer.pad(q_collated, padding="longest", return_tensors="pt")
         q_collated = self.mask_pad_token(q_collated)
 
         d_collated = self.tokenizer(
             passage,
-            padding="longest",
             truncation=True,
             max_length=self.max_length,
-            return_tensors="pt",
         )
+        if self.add_eos_token:
+            d_collated = self._add_eos_token(d_collated)
+        d_collated = self.tokenizer.pad(d_collated, padding="longest", return_tensors="pt")
         d_collated = self.mask_pad_token(d_collated)
 
         return {"query": q_collated, "passage": d_collated}

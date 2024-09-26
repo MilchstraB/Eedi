@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 from torch import nn, Tensor
 import torch.distributed as dist
 from transformers import AutoModel
+from peft import PeftModel
 
 from utils import print_rank_0
 
@@ -11,7 +12,7 @@ from utils import print_rank_0
 class BiEncoderModel(nn.Module):
     def __init__(
         self,
-        model: AutoModel,
+        model: Union[AutoModel, PeftModel],
         normlized: bool = False,
         negatives_cross_device: bool = False,
         temperature: float = 1.0,
@@ -157,10 +158,3 @@ class BiEncoderModel(nn.Module):
         all_tensors = torch.cat(all_tensors, dim=0)
 
         return all_tensors
-
-    def save_pretrained(self, save_directory, state_dict=None, safe_serialization=True):
-        self.model.save_pretrained(
-            save_directory, 
-            state_dict=state_dict, 
-            safe_serialization=safe_serialization
-        )
