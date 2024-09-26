@@ -75,7 +75,7 @@ class RetrievalTrainer(Trainer):
         model_to_save = self.model.module if hasattr(self.model, 'module') else self.model
         model_to_save = model_to_save.model
         model_to_save.save_pretrained(
-            output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+            output_dir, safe_serialization=self.args.save_safetensors
         )
 
         if self.tokenizer is not None:
