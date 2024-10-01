@@ -66,6 +66,7 @@ class RetrievalTrainer(Trainer):
             text_embeddings.extend(results.tolist())
             labels.extend(target.tolist())
 
+        labels = [[e] for e in labels]
         del text_dataloader
 
         mis_dataloader = DataLoader(
