@@ -10,10 +10,12 @@ class plain_processor:
         tokenizer: AutoTokenizer,
         max_length: int,
         template: Optional[str] = "{ConstructName} {QuestionText} {Answer}",
+        add_eos_token: bool = True,
     ):
         self.tokenizer = tokenizer
-        self.max_length = max_length
         self.template = template
+        self.add_eos_token = add_eos_token
+        self.max_length = max_length - 1 if add_eos_token else max_length
 
     def preprocess_batch(self, batch_data: Dict[str, List[str]]):
         subject_name = batch_data["SubjectName"]
@@ -45,6 +47,10 @@ class plain_processor:
             truncation=True,
         )
 
+        for input_ids, attention_mask in zip(outputs['input_ids'], outputs['attention_mask']):
+            input_ids.append(self.tokenizer.eos_token_id)
+            attention_mask.append(1)
+
         results["input_ids"] = outputs["input_ids"]
         results["attention_mask"] = outputs["attention_mask"]
 
@@ -60,9 +66,11 @@ class misconception_processor:
         self,
         tokenizer: AutoTokenizer,
         max_length: int,
+        add_eos_token: bool = True,
     ):
         self.tokenizer = tokenizer
-        self.max_length = max_length
+        self.add_eos_token = add_eos_token
+        self.max_length = max_length - 1 if add_eos_token else max_length
     
     def __call__(self, batch_data):
         batch_data = batch_data["MisconceptionName"]
@@ -72,6 +80,10 @@ class misconception_processor:
             max_length=self.max_length,
             truncation=True,
         )
+
+        for input_ids, attention_mask in zip(outputs['input_ids'], outputs['attention_mask']):
+            input_ids.append(self.tokenizer.eos_token_id)
+            attention_mask.append(1)
 
         results["input_ids"] = outputs["input_ids"]
         results["attention_mask"] = outputs["attention_mask"]

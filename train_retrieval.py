@@ -11,12 +11,14 @@ from transformers import (
     BitsAndBytesConfig,
 )
 
+from datasets import Dataset, DatasetDict
 from peft import LoraConfig, TaskType, get_peft_model, PeftModel
 
 from retrieval.Embedding_model import BiEncoderModel
-from retrieval.Embedding_data import TrainDatasetForEmbedding, EmbedCollator
+from retrieval.Embedding_data import TrainDatasetForEmbedding, EmbedCollator, plain_processor
 from retrieval.Embedding_trainer import RetrievalTrainer as Trainer
 from utils import print_rank_0, mapk, recall
+from text_processor.processor_v1 import misconception_processor
 
 os.environ["WANDB_PROJECT"] = "eedi"
 
@@ -52,6 +54,9 @@ class DataArguments:
     val_data_path: str = field(
         default="data/split/val.csv", metadata={"help": "Path to the validation data."}
     )
+    misconception_mapping: str = field(
+        default="data/misconception_mapping.csv", metadata={"help": "Path to the misconception mapping."}
+    )
     max_length: int = field(
         default=1024,
         metadata={
@@ -79,8 +84,7 @@ class TrainingArguments(TrainingArguments):
 
 
 def compute_metrics(preds, labels) -> dict:
-    group_size = len(preds[0])
-    mAP = mapk(labels, preds, group_size)
+    mAP = mapk(labels, preds, 25)
     Recall = recall(preds, labels)
 
     return {"mAP": mAP, "Recall": Recall}
@@ -165,7 +169,29 @@ def train():
 
     # prepare data
     train_dataset = TrainDatasetForEmbedding(data_args, mode="train")
-    val_dataset = TrainDatasetForEmbedding(data_args, mode="val")
+
+    text_dataset = Dataset.from_json(data_args.val_data_path)
+    plain_preprocess = plain_processor(
+        tokenizer, 
+        data_args.max_length,
+        data_args.misconception_mapping,
+        add_eos_token=data_args.add_eos_token,
+    )
+    text_dataset = text_dataset.map(plain_preprocess, batched=True, remove_columns=text_dataset.column_names)
+
+    misconception_mapping = Dataset.from_csv(data_args.misconception_mapping)
+    mis_preprocess = misconception_processor(
+        tokenizer, 
+        data_args.max_length,
+        add_eos_token=data_args.add_eos_token,
+    )
+    misconception_mapping = misconception_mapping.map(mis_preprocess, batched=True, remove_columns=misconception_mapping.column_names)
+
+    val_dataset = DatasetDict({
+        "text": text_dataset,
+        "misconception": misconception_mapping
+    })
+
 
     trainer = Trainer(
         args=training_args,

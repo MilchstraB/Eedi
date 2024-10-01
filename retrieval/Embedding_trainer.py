@@ -1,15 +1,34 @@
 import os
 import logging
+import numpy as np
 from tqdm import tqdm
 from typing import Optional, List, Dict
 
 import torch
+from torch import Tensor
+import torch.nn.functional as F
 import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset
 from transformers.trainer import Trainer
 from transformers.trainer_utils import EvalLoopOutput
+from transformers import DataCollatorWithPadding
+
+from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger(__name__)
+
+
+def last_token_pool(
+    last_hidden_states: Tensor,            
+    attention_mask: Tensor
+) -> Tensor:
+    left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+    if left_padding:
+        return last_hidden_states[:, -1]
+    else:
+        sequence_lengths = attention_mask.sum(dim=1) - 1
+        batch_size = last_hidden_states.shape[0]
+        return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
 
 class RetrievalTrainer(Trainer):
@@ -22,27 +41,52 @@ class RetrievalTrainer(Trainer):
             return
         
         self.model.eval()
+        model_base = self.model.module if hasattr(self.model, 'module') else self.model
+        model_base = model_base.model
 
-        dataloader = DataLoader(
-            self.eval_dataset,
+        data_collator = DataCollatorWithPadding(self.data_collator.tokenizer)
+
+        text_dataloader = DataLoader(
+            self.eval_dataset["text"],
             batch_size=self.args.per_device_eval_batch_size,
             pin_memory=True,
-            collate_fn=self.data_collator,
+            collate_fn=data_collator,
         )
+        text_dataloader = self.accelerator.prepare(text_dataloader)
 
-        preds, labels = [], []
-        for _, inputs in enumerate(tqdm(dataloader, desc="Evaluation")):
-            outputs = self.model(**inputs)
-            group_size = outputs["p_reps"].size(0) // outputs["q_reps"].size(0)
-            target = torch.arange(
-                outputs["scores"].size(0), device=outputs["scores"].device, dtype=torch.long
-            )
-            target = torch.unsqueeze(target * group_size, dim=1)
-            results = outputs["scores"].topk(k=group_size, dim=1, largest=True, sorted=True)[1]
-            results = self.accelerator.gather_for_metrics(results.contiguous())
+        text_embeddings, labels = [], []
+        for _, inputs in enumerate(tqdm(text_dataloader, desc="Encoding text: ")):
+            target = inputs.pop("labels")
+            outputs = model_base(**inputs).last_hidden_state
+            sentence_embeddings = last_token_pool(outputs, inputs['attention_mask'])
+            sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+  
+            results = self.accelerator.gather_for_metrics(sentence_embeddings.contiguous())
             target = self.accelerator.gather_for_metrics(target.contiguous())
-            preds.extend(results.tolist())
+            text_embeddings.extend(results.tolist())
             labels.extend(target.tolist())
+
+        del text_dataloader
+
+        mis_dataloader = DataLoader(
+            self.eval_dataset["misconception"],
+            batch_size=self.args.per_device_eval_batch_size,
+            pin_memory=True,
+            collate_fn=data_collator,
+        )
+        mis_dataloader = self.accelerator.prepare(mis_dataloader)
+
+        misconception_embeddings = []
+        for _, inputs in enumerate(tqdm(mis_dataloader, desc="Encoding misconception: ")):
+            outputs = model_base(**inputs).last_hidden_state
+            sentence_embeddings = last_token_pool(outputs, inputs['attention_mask'])
+            sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+            results = self.accelerator.gather_for_metrics(sentence_embeddings.contiguous())
+            misconception_embeddings.extend(results.tolist())
+        
+        cos_sim_arr = cosine_similarity(text_embeddings, misconception_embeddings)
+        sorted_indices = np.argsort(-cos_sim_arr, axis=1)
+        preds = sorted_indices[:, :25].tolist()
 
         if self.args.process_index == 0:
             metrics = [self.compute_metrics(preds, labels)]

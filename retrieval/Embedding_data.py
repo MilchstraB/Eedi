@@ -1,8 +1,10 @@
 import os
 import json
 import random
+import pandas as pd
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Optional, Dict
+from collections import defaultdict
 
 import datasets
 import torch
@@ -133,3 +135,48 @@ class EmbedCollator(DataCollatorWithPadding):
         d_collated = self.mask_pad_token(d_collated)
 
         return {"query": q_collated, "passage": d_collated}
+    
+
+class plain_processor:
+    def __init__(
+        self,
+        tokenizer: AutoTokenizer,
+        max_length: int,
+        misconception_mapping: str,
+        add_eos_token: bool = True,
+    ):
+        self.tokenizer = tokenizer
+        self.add_eos_token = add_eos_token
+        self.max_length = max_length - 1 if add_eos_token else max_length
+
+        misconception_mapping = pd.read_csv(misconception_mapping)
+        self.misconception_mapping = {
+            row["MisconceptionName"]: row["MisconceptionId"]
+            for _, row in misconception_mapping.iterrows()
+        }
+    
+    def __call__(self, batch_data):
+        querys, pos_samples = [], []
+        for q, p in zip(batch_data["query"], batch_data["pos"]):
+            querys.append(q)
+            assert len(p) == 1, "Only one positive sample is allowed in plain processor"
+            pos_samples.append(p[0])
+        
+        results = defaultdict(list)
+        outputs = self.tokenizer(
+            querys,
+            max_length=self.max_length,
+            truncation=True,
+        )
+        
+        for input_ids, attention_mask in zip(outputs['input_ids'], outputs['attention_mask']):
+            input_ids.append(self.tokenizer.eos_token_id)
+            attention_mask.append(1)
+
+        results["input_ids"] = outputs["input_ids"]
+        results["attention_mask"] = outputs["attention_mask"]
+
+        labels = map(self.misconception_mapping.get, pos_samples)
+        results["labels"] = list(labels)
+
+        return results
