@@ -105,7 +105,7 @@ def train():
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         padding_side="right",
-        use_fast=True,
+        use_fast=False,
         # add_eos_token=model_args.add_eos_token,
     )
 
@@ -124,11 +124,13 @@ def train():
         model = AutoModel.from_pretrained(
             model_args.model_name_or_path,
             quantization_config=bnb_config,
+            trust_remote_code=True,
         )
     else:
         model = AutoModel.from_pretrained(
             model_args.model_name_or_path,
             torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
         )
 
     model.enable_input_require_grads()
