@@ -31,7 +31,7 @@ def last_token_pool(
         return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
 
-def sentence_embedding(hidden_state, mask, sentence_pooling_method="last"):
+def sentence_embedding(hidden_state, mask, sentence_pooling_method):
     if sentence_pooling_method == "mean":
         s = torch.sum(hidden_state * mask.unsqueeze(-1).float(), dim=1)
         d = mask.sum(axis=1, keepdim=True).float()
