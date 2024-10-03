@@ -52,8 +52,8 @@ class RetrievalTrainer(Trainer):
             return
         
         self.model.eval()
+        sentence_pooling_method = self.model.sentence_pooling_method
         model_base = self.model.module if hasattr(self.model, 'module') else self.model
-        sentence_pooling_method = model_base.sentence_pooling_method
         model_base = model_base.model
 
         data_collator = DataCollatorWithPadding(self.data_collator.tokenizer)
