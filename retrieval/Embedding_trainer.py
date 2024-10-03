@@ -31,6 +31,17 @@ def last_token_pool(
         return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
 
+def sentence_embedding(hidden_state, mask, sentence_pooling_method="last"):
+    if sentence_pooling_method == "mean":
+        s = torch.sum(hidden_state * mask.unsqueeze(-1).float(), dim=1)
+        d = mask.sum(axis=1, keepdim=True).float()
+        return s / d
+    elif sentence_pooling_method == "cls":
+        return hidden_state[:, 0]
+    elif sentence_pooling_method == "last":
+        return last_token_pool(hidden_state, mask)
+    
+
 class RetrievalTrainer(Trainer):
     """Trainer with retrieval-based evaluation in batch negatives."""
     @torch.no_grad()
@@ -42,6 +53,7 @@ class RetrievalTrainer(Trainer):
         
         self.model.eval()
         model_base = self.model.module if hasattr(self.model, 'module') else self.model
+        sentence_pooling_method = model_base.sentence_pooling_method
         model_base = model_base.model
 
         data_collator = DataCollatorWithPadding(self.data_collator.tokenizer)
@@ -58,7 +70,7 @@ class RetrievalTrainer(Trainer):
         for _, inputs in enumerate(tqdm(text_dataloader, desc="Encoding text: ")):
             target = inputs.pop("labels")
             outputs = model_base(**inputs).last_hidden_state
-            sentence_embeddings = last_token_pool(outputs, inputs['attention_mask'])
+            sentence_embeddings = sentence_embedding(outputs, inputs['attention_mask'], sentence_pooling_method)
             sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
   
             results = self.accelerator.gather_for_metrics(sentence_embeddings.contiguous())
