@@ -47,9 +47,10 @@ class plain_processor:
             truncation=True,
         )
 
-        for input_ids, attention_mask in zip(outputs['input_ids'], outputs['attention_mask']):
-            input_ids.append(self.tokenizer.eos_token_id)
-            attention_mask.append(1)
+        if self.add_eos_token:
+            for input_ids, attention_mask in zip(outputs['input_ids'], outputs['attention_mask']):
+                input_ids.append(self.tokenizer.eos_token_id)
+                attention_mask.append(1)
 
         results["input_ids"] = outputs["input_ids"]
         results["attention_mask"] = outputs["attention_mask"]
@@ -81,9 +82,10 @@ class misconception_processor:
             truncation=True,
         )
 
-        for input_ids, attention_mask in zip(outputs['input_ids'], outputs['attention_mask']):
-            input_ids.append(self.tokenizer.eos_token_id)
-            attention_mask.append(1)
+        if self.add_eos_token:
+            for input_ids, attention_mask in zip(outputs['input_ids'], outputs['attention_mask']):
+                input_ids.append(self.tokenizer.eos_token_id)
+                attention_mask.append(1)
 
         results["input_ids"] = outputs["input_ids"]
         results["attention_mask"] = outputs["attention_mask"]
