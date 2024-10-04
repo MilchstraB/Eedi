@@ -98,7 +98,7 @@ def train():
     if model_args.lora_target != "all-linear":
         model_args.lora_target = eval(model_args.lora_target)
 
-    # training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
+    training_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
 
     # prepare tokenizer and model
     # Since the add_eos_token method sometimes fails, we manually add the eos token.

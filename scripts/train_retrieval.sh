@@ -11,7 +11,7 @@ deepspeed train_retrieval.py \
     --lora_alpha 32 \
     --lora_dropout 0.05 \
     --lora_target "all-linear" \
-    --gradient_checkpointing False \
+    --gradient_checkpointing True \
     --overwrite_output_dir True \
     --save_strategy "steps" \
     --save_steps 0.2 \
