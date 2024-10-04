@@ -97,6 +97,9 @@ class RetrievalTrainer(Trainer):
             results = self.accelerator.gather_for_metrics(sentence_embeddings.contiguous())
             misconception_embeddings.extend(results.tolist())
         
+        del mis_dataloader
+        torch.cuda.empty_cache()
+        
         cos_sim_arr = cosine_similarity(text_embeddings, misconception_embeddings)
         sorted_indices = np.argsort(-cos_sim_arr, axis=1)
         preds = sorted_indices[:, :25].tolist()
