@@ -80,11 +80,9 @@ class BiEncoderModel(nn.Module):
         if features is None:
             return None
         
-        features = {k: v.to(self.model.device) for k, v in features.items()}
         psg_out = self.model(
             input_ids=features["input_ids"],
             attention_mask=features["attention_mask"],
-            return_dict=True,
         )
         p_reps = self.sentence_embedding(
             psg_out.last_hidden_state, features["attention_mask"]
