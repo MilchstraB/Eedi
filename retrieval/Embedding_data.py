@@ -12,18 +12,12 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer, DataCollatorWithPadding
 
 class TrainDatasetForEmbedding(Dataset):
-    def __init__(self, args, mode="train"):
-        data_path = args.train_data_path if mode == "train" else args.val_data_path
+    def __init__(self, args):
+        data_path = args.train_data_path
         
         if os.path.isdir(data_path):
-            train_datasets = []
-            for file in os.listdir(data_path):
-                temp_dataset = datasets.load_dataset('json', data_files=os.path.join(data_path, file), split='train')
-                if len(temp_dataset) > args.max_example_num_per_dataset:
-                    temp_dataset = temp_dataset.select(
-                        random.sample(list(range(len(temp_dataset))), args.max_example_num_per_dataset))
-                train_datasets.append(temp_dataset)
-            self.dataset = datasets.concatenate_datasets(train_datasets)
+            train_datasets = [os.path.join(data_path, file) for file in os.listdir(data_path)]
+            self.dataset = datasets.load_dataset('json', data_files=train_datasets, split='train')
         else:
             self.dataset = datasets.load_dataset('json', data_files=data_path, split='train')
 
