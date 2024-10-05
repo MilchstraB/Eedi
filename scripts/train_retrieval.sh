@@ -1,11 +1,14 @@
 deepspeed train_retrieval.py \
-    --model_name_or_path /h3cstore_nt/pc_embedding/mm3d/LMSYS/cache/Meta-Llama-3.1-8B-Instruct \
+    --model_name_or_path /h3cstore_nt/pc_embedding/mm3d/eedi/pretrain_model/Qwen2.5-Math-1.5B-Instruct \
     --max_length 1024 \
     --add_eos_token True \
-    --train_data_path /h3cstore_nt/pc_embedding/mm3d/eedi/data/reranker_split/train_fold_1.json \
+    --normlized True \
+    --temperature 0.1 \
+    --sentence_pooling_method "last" \
+    --train_data_path /h3cstore_nt/pc_embedding/mm3d/eedi/data/reranker_split/train_fold_1 \
     --val_data_path /h3cstore_nt/pc_embedding/mm3d/eedi/data/reranker_split/val_fold_1.json \
     --misconception_mapping /h3cstore_nt/pc_embedding/mm3d/eedi/data/misconception_mapping.csv \
-    --deepspeed ./scripts/zero3.json \
+    --deepspeed ./scripts/zero2.json \
     --lora_enable True \
     --lora_r 16 \
     --lora_alpha 32 \
@@ -27,10 +30,10 @@ deepspeed train_retrieval.py \
     --report_to "wandb" \
     --bf16 True \
     --num_train_epochs 3 \
-    --per_device_train_batch_size 1 \
+    --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 8 \
+    --gradient_accumulation_steps 2 \
     --learning_rate 2e-4 \
     --lr_scheduler_type "cosine" \
     --output_dir /h3cstore_nt/pc_embedding/mm3d/eedi/output/retrieval_fold_1 \
-    --run_name llama3.1_8b
+    --run_name Qwen2.5-1.5B-norm-0.1-exdata
