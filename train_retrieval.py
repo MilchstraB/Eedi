@@ -170,7 +170,7 @@ def train():
     )
 
     # prepare data
-    train_dataset = TrainDatasetForEmbedding(data_args, mode="train")
+    train_dataset = TrainDatasetForEmbedding(data_args)
 
     text_dataset = Dataset.from_json(data_args.val_data_path)
     plain_preprocess = plain_processor(
