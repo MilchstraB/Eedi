@@ -2,6 +2,7 @@ from typing import Optional, Union
 
 import torch
 from torch import nn, Tensor
+import torch.nn.functional as F
 import torch.distributed as dist
 from transformers import AutoModel
 from peft import PeftModel
@@ -88,7 +89,7 @@ class BiEncoderModel(nn.Module):
             psg_out.last_hidden_state, features["attention_mask"]
         )
         if self.normlized:
-            p_reps = torch.nn.functional.normalize(p_reps, dim=-1)
+            p_reps = F.normalize(p_reps, p=2, dim=1)
         return p_reps.contiguous()
 
     def compute_similarity(self, q_reps, p_reps):
