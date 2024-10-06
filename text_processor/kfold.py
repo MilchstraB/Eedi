@@ -4,7 +4,7 @@ from sklearn.model_selection import KFold
 
 # 加载 JSON 文件为 Pandas DataFrame
 json_objects = []
-with open('/h3cstore_nt/pc_embedding/mm3d/eedi/data/train_hn.jsonl', 'r') as f:
+with open('/h3cstore_nt/pc_embedding/mm3d/eedi/data/train.jsonl', 'r') as f:
     for line in f:
         json_objects.append(json.loads(line))
 
@@ -41,12 +41,14 @@ for fold_idx, (train_index, val_index) in enumerate(kf.split(df)):
 for fold in folds:
     fold_num = fold['fold']
     
-    # 保存训练集
-    with open(f'/h3cstore_nt/pc_embedding/mm3d/eedi/data/reranker_split/train_fold_{fold_num}.json', 'w') as f:
-        json.dump(fold['train'], f, indent=4)
+    # 保存训练集为 JSONL 格式
+    with open(f'/h3cstore_nt/pc_embedding/mm3d/eedi/data/reranker_split/train_fold_{fold_num}.jsonl', 'w') as f:
+        for record in fold['train']:
+            f.write(json.dumps(record) + '\n')
     
-    # 保存验证集
-    with open(f'/h3cstore_nt/pc_embedding/mm3d/eedi/data/reranker_split/val_fold_{fold_num}.json', 'w') as f:
-        json.dump(fold['val'], f, indent=4)
+    # 保存验证集为 JSONL 格式
+    with open(f'/h3cstore_nt/pc_embedding/mm3d/eedi/data/reranker_split/val_fold_{fold_num}.jsonl', 'w') as f:
+        for record in fold['val']:
+            f.write(json.dumps(record) + '\n')
 
 print("5折交叉验证数据集划分完成并保存至文件。")
