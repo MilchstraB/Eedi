@@ -78,6 +78,7 @@ class RetrievalTrainer(Trainer):
             text_embeddings.extend(results.tolist())
             labels.extend(target.tolist())
 
+        text_embeddings = np.stack(text_embeddings, axis=0)
         labels = [[e] for e in labels]
         del text_dataloader
 
@@ -92,11 +93,12 @@ class RetrievalTrainer(Trainer):
         misconception_embeddings = []
         for _, inputs in enumerate(tqdm(mis_dataloader, desc="Encoding misconception: ")):
             outputs = model_base(**inputs).last_hidden_state
-            sentence_embeddings = last_token_pool(outputs, inputs['attention_mask'])
+            sentence_embeddings = sentence_embedding(outputs, inputs['attention_mask'], sentence_pooling_method)
             sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
             results = self.accelerator.gather_for_metrics(sentence_embeddings.contiguous())
             misconception_embeddings.extend(results.tolist())
         
+        misconception_embeddings = np.stack(misconception_embeddings, axis=0)
         del mis_dataloader
         torch.cuda.empty_cache()
         
