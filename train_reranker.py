@@ -6,18 +6,19 @@ import torch
 from torch.optim import AdamW
 import transformers
 from transformers import (
-    AutoModelForSequenceClassification,
     AutoTokenizer,
     DataCollatorWithPadding,
-    EvalPrediction,
     Trainer,
     TrainingArguments,
+    BitsAndBytesConfig,
 )
 
 from datasets import Dataset
 from peft import LoraConfig, TaskType, get_peft_model, PeftModel
-from sklearn.metrics import accuracy_score, log_loss
 
+from reranker.Reranker_model import CrossEncoder
+from reranker.Reranker_data import TrainDatasetForRerank, GroupCollator
+from reranker.Rerannker_trainer import RerankTrainer as Trainer
 from utils import print_rank_0, get_optimizer_grouped_parameters
 from text_processor.reranker_processor import reranker_processor
 
@@ -27,8 +28,15 @@ os.environ["WANDB_PROJECT"] = "eedi"
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-Math-1.5B-Instruct")
-    add_eos_token: bool = field(default=False)
+    
+    lora_enable: bool = field(default=True)
+    lora_r: int = field(default=16)
+    lora_alpha: int = field(default=32)
+    lora_dropout: float = field(default=0.05)
+    lora_bias: str = "none"
+    lora_target: str = field(default="all-linear")
 
+    pretrain_lora: str = field(default=None)
 
 @dataclass
 class DataArguments:
@@ -47,19 +55,18 @@ class DataArguments:
     template: str = field(
         default="<|im_start|>{QUERY}\n\n{DOC}<|im_end|>", metadata={"help": "Template for the input text."}
     )
+    add_eos_token: bool = field(default=False)
 
 
 @dataclass
 class TrainingArguments(TrainingArguments):
+    train_group_size: int = field(
+        default=6,
+        metadata={"help": "The total numbers of postive samples and negative samples."}
+    )
+
     llrd_enable: bool = field(default=False)
     score_lr: float = field(default=None)
-
-    lora_enable: bool = field(default=True)
-    lora_r: int = field(default=16)
-    lora_alpha: int = field(default=32)
-    lora_dropout: float = field(default=0.05)
-    lora_bias: str = "none"
-    lora_target: str = field(default="all-linear")
 
     gradient_checkpointing: bool = field(default=True)
     eval_steps: float = field(default=0.2)
@@ -73,17 +80,6 @@ class TrainingArguments(TrainingArguments):
     logging_steps: float = field(default=0.005)
     report_to: str = field(default="wandb")
 
-    pretrain_lora: str = field(default=None)
-
-
-def compute_metrics(eval_preds: EvalPrediction) -> dict:
-    preds = eval_preds.predictions
-    labels = eval_preds.label_ids
-    probs = torch.from_numpy(preds).float().softmax(-1).numpy()
-    loss = log_loss(y_true=labels, y_pred=probs)
-    acc = accuracy_score(y_true=labels, y_pred=preds.argmax(-1))
-    return {"acc": acc, "log_loss": loss}
-
 
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
@@ -93,20 +89,47 @@ def train():
     if training_args.lora_target != "all-linear":
         training_args.lora_target = eval(training_args.lora_target)
 
-    training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
+    training_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
 
     # prepare tokenizer and model
+    # Since the add_eos_token method sometimes fails, we manually add the eos token.
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         padding_side="right",
-        use_fast=True,
-        add_eos_token=model_args.add_eos_token,
+        use_fast=False,
+        # add_eos_token=model_args.add_eos_token,
     )
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_args.model_name_or_path,
-        num_labels=2,
-        torch_dtype=torch.bfloat16,
-    )
+
+    bnb_config = None
+    if model_args.load_in_4bit:
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+    elif model_args.load_in_8bit:
+        bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+
+    if bnb_config is not None:
+        model = CrossEncoder.from_pretrained(
+            training_args.per_device_train_batch_size,
+            training_args.train_group_size,
+            model_args.model_name_or_path,
+            num_labels=1, # https://github.com/FlagOpen/FlagEmbedding/issues/634
+            quantization_config=bnb_config,
+            trust_remote_code=True,
+        )
+    else:
+        model = CrossEncoder.from_pretrained(
+            training_args.per_device_train_batch_size,
+            training_args.train_group_size,
+            model_args.model_name_or_path,
+            num_labels=1, # https://github.com/FlagOpen/FlagEmbedding/issues/634
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+        )
+
     model.enable_input_require_grads()
     model.config.use_cache = False
 
@@ -118,40 +141,25 @@ def train():
         tokenizer.pad_token = "<|endoftext|>"
         model.config.pad_token_id = tokenizer.pad_token_id
 
-    if training_args.lora_enable:
+    if model_args.lora_enable:
         lora_config = LoraConfig(
-            r=training_args.lora_r,
-            lora_alpha=training_args.lora_alpha,
-            target_modules=training_args.lora_target,
-            lora_dropout=training_args.lora_dropout,
-            bias=training_args.lora_bias,
+            r=model_args.lora_r,
+            lora_alpha=model_args.lora_alpha,
+            target_modules=model_args.lora_target,
+            lora_dropout=model_args.lora_dropout,
+            bias=model_args.lora_bias,
             task_type=TaskType.SEQ_CLS,
         )
 
-        if training_args.pretrain_lora:
+        if model_args.pretrain_lora:
             print_rank_0(f"Loading pretrain lora weight from {training_args.pretrain_lora}...")
             model = PeftModel.from_pretrained(model, training_args.pretrain_lora, is_trainable=True)
         else:
             model = get_peft_model(model, lora_config)
 
     # prepare data
-    train_dataset = Dataset.from_json(data_args.train_data_path)
-    val_dataset = Dataset.from_json(data_args.val_data_path)
-
-    preprocess = reranker_processor(tokenizer, max_length=data_args.max_length, template=data_args.template)
-    train_dataset = train_dataset.map(
-        preprocess,
-        batched=True,
-        remove_columns=train_dataset.column_names,
-        load_from_cache_file=False,
-    )
-    val_dataset = val_dataset.map(
-        preprocess,
-        batched=True,
-        remove_columns=val_dataset.column_names,
-        load_from_cache_file=False,
-    )
-
+    train_dataset = TrainDatasetForRerank(data_args, tokenizer, "train")
+    val_dataset = TrainDatasetForRerank(data_args, tokenizer, "val")
 
     trainer = Trainer(
         args=training_args,
@@ -159,8 +167,7 @@ def train():
         tokenizer=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        compute_metrics=compute_metrics,
-        data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
+        data_collator=GroupCollator(tokenizer=tokenizer),
     )
 
 
