@@ -7,7 +7,6 @@ from torch.optim import AdamW
 import transformers
 from transformers import (
     AutoTokenizer,
-    DataCollatorWithPadding,
     Trainer,
     TrainingArguments,
     BitsAndBytesConfig,
@@ -20,7 +19,6 @@ from reranker.Reranker_model import CrossEncoder
 from reranker.Reranker_data import TrainDatasetForRerank, GroupCollator
 from reranker.Rerannker_trainer import RerankTrainer as Trainer
 from utils import print_rank_0, get_optimizer_grouped_parameters
-from text_processor.reranker_processor import reranker_processor
 
 os.environ["WANDB_PROJECT"] = "eedi"
 
