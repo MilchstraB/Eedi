@@ -27,8 +27,8 @@ class CrossEncoder(nn.Module):
     def gradient_checkpointing_enable(self, **kwargs):
         self.model.gradient_checkpointing_enable(**kwargs)
 
-    def forward(self, batch):
-        ranker_out: SequenceClassifierOutput = self.model(**batch, return_dict=True)
+    def forward(self, **kwargs):
+        ranker_out: SequenceClassifierOutput = self.model(**kwargs, return_dict=True)
         logits = ranker_out.logits
 
         if self.training:
@@ -44,15 +44,3 @@ class CrossEncoder(nn.Module):
             )
         else:
             return ranker_out
-
-    @classmethod
-    def from_pretrained(
-        cls, 
-        per_device_train_batch_size: int, 
-        train_group_size: int,
-        *args, 
-        **kwargs
-    ):
-        model = AutoModelForSequenceClassification.from_pretrained(*args, **kwargs)
-        reranker = cls(model, per_device_train_batch_size, train_group_size)
-        return reranker

@@ -6,13 +6,13 @@ import torch
 from torch.optim import AdamW
 import transformers
 from transformers import (
+    AutoModelForSequenceClassification,
     AutoTokenizer,
     Trainer,
     TrainingArguments,
     BitsAndBytesConfig,
 )
 
-from datasets import Dataset
 from peft import LoraConfig, TaskType, get_peft_model, PeftModel
 
 from reranker.Reranker_model import CrossEncoder
@@ -27,6 +27,9 @@ os.environ["WANDB_PROJECT"] = "eedi"
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="Qwen/Qwen2-Math-1.5B-Instruct")
     
+    load_in_4bit: bool = field(default=False)
+    load_in_8bit: bool = field(default=False)
+
     lora_enable: bool = field(default=True)
     lora_r: int = field(default=16)
     lora_alpha: int = field(default=32)
@@ -84,8 +87,8 @@ def train():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     training_args.output_dir = os.path.join(training_args.output_dir, training_args.run_name)
 
-    if training_args.lora_target != "all-linear":
-        training_args.lora_target = eval(training_args.lora_target)
+    if model_args.lora_target != "all-linear":
+        model_args.lora_target = eval(model_args.lora_target)
 
     training_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
 
@@ -109,24 +112,13 @@ def train():
     elif model_args.load_in_8bit:
         bnb_config = BitsAndBytesConfig(load_in_8bit=True)
 
-    if bnb_config is not None:
-        model = CrossEncoder.from_pretrained(
-            training_args.per_device_train_batch_size,
-            training_args.train_group_size,
-            model_args.model_name_or_path,
-            num_labels=1, # https://github.com/FlagOpen/FlagEmbedding/issues/634
-            quantization_config=bnb_config,
-            trust_remote_code=True,
-        )
-    else:
-        model = CrossEncoder.from_pretrained(
-            training_args.per_device_train_batch_size,
-            training_args.train_group_size,
-            model_args.model_name_or_path,
-            num_labels=1, # https://github.com/FlagOpen/FlagEmbedding/issues/634
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-        )
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_args.model_name_or_path,
+        num_labels=1, # https://github.com/FlagOpen/FlagEmbedding/issues/634
+        quantization_config=bnb_config,
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
+    )
 
     model.enable_input_require_grads()
     model.config.use_cache = False
@@ -154,6 +146,12 @@ def train():
             model = PeftModel.from_pretrained(model, training_args.pretrain_lora, is_trainable=True)
         else:
             model = get_peft_model(model, lora_config)
+
+    model = CrossEncoder(
+        model=model,
+        per_device_train_batch_size=training_args.per_device_train_batch_size,
+        train_group_size=training_args.train_group_size,
+    )
 
     # prepare data
     train_dataset = TrainDatasetForRerank(data_args, tokenizer, "train")
