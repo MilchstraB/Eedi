@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from transformers import AutoModelForSequenceClassification, PreTrainedModel
+from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 
@@ -31,16 +31,13 @@ class CrossEncoder(nn.Module):
         ranker_out: SequenceClassifierOutput = self.model(**kwargs, return_dict=True)
         logits = ranker_out.logits
 
-        if self.training:
-            scores = logits.view(
-                self.per_device_train_batch_size,
-                self.train_group_size
-            )
-            loss = self.cross_entropy(scores, self.target_label)
+        scores = logits.view(
+            self.per_device_train_batch_size,
+            self.train_group_size
+        )
+        loss = self.cross_entropy(scores, self.target_label)
 
-            return SequenceClassifierOutput(
-                loss=loss,
-                **ranker_out,
-            )
-        else:
-            return ranker_out
+        return SequenceClassifierOutput(
+            loss=loss,
+            **ranker_out,
+        )
