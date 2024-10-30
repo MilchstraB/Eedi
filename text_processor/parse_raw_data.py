@@ -1,3 +1,8 @@
+"""
+Parse raw data from:
+https://huggingface.co/datasets/andreuka18/pair_preference_eedi_llama
+https://huggingface.co/datasets/andreuka18/pair_preference_eedi_mistral
+"""
 import re
 import json
 import pandas as pd
