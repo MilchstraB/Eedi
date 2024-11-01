@@ -18,7 +18,7 @@ from peft import LoraConfig, TaskType, get_peft_model, PeftModel
 from reranker.Reranker_model import CrossEncoder
 from reranker.Reranker_data import TrainDatasetForRerank, GroupCollator
 from reranker.Rerannker_trainer import RerankTrainer as Trainer
-from utils import print_rank_0, get_optimizer_grouped_parameters
+from utils import print_rank_0, get_optimizer_grouped_parameters, mapk, recall
 
 os.environ["WANDB_PROJECT"] = "eedi"
 
@@ -80,6 +80,13 @@ class TrainingArguments(TrainingArguments):
     warmup_ratio: float = field(default=0.05)
     logging_steps: float = field(default=0.005)
     report_to: str = field(default="wandb")
+
+
+def compute_metrics(preds, labels) -> dict:
+    mAP = mapk(labels, preds, 25)
+    Recall = recall(preds, labels)
+
+    return {"mAP": mAP, "Recall": Recall}
 
 
 def train():
@@ -163,6 +170,7 @@ def train():
         tokenizer=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
+        compute_metrics=compute_metrics,
         data_collator=GroupCollator(tokenizer=tokenizer),
     )
 

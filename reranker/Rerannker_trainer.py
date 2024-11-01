@@ -1,7 +1,16 @@
 import os
 import logging
-from typing import Optional
+import numpy as np
+from tqdm import tqdm
+from typing import Optional, List, Dict
+
+import torch
+import torch.distributed as dist
+from torch.utils.data import DataLoader, Dataset
 from transformers.trainer import Trainer
+from transformers.trainer_utils import EvalLoopOutput
+
+from Reranker_data import ValCollator
 
 logger = logging.getLogger(__name__)
 
@@ -25,3 +34,64 @@ class RerankTrainer(Trainer):
 
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
+
+    @torch.no_grad()
+    def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None, metric_key_prefix: str = "eval") -> Dict[str, float]:
+        self._memory_tracker.start()
+
+        if eval_dataset is None and self.eval_dataset is None:
+            return
+        
+        self.model.eval()
+        model_base = self.model.module if hasattr(self.model, 'module') else self.model
+        model_base = model_base.model
+
+        data_collator = ValCollator(self.data_collator.tokenizer)
+        eval_dataloader = DataLoader(
+            self.eval_dataset,
+            collate_fn=data_collator,
+            batch_size=self.args.per_device_eval_batch_size,
+            pin_memory=True,
+        )
+        eval_dataloader = self.accelerator.prepare(eval_dataloader)
+
+        probas, mis_ids = [], []
+        for _, batch in enumerate(tqdm(eval_dataloader, desc="Evaluating: ")):
+            logits = model_base(**batch["inputs"]).logits
+            proba = logits.sigmoid()
+            proba = self.accelerator.gather_for_metrics(proba.contiguous())
+            mis_id = self.accelerator.gather_for_metrics(batch["mis_ids"].contiguous()) 
+            probas.extend(proba.tolist())
+            mis_ids.extend(mis_id.tolist())
+
+        results = [(proba, mis_id) for proba, mis_id in zip(probas, mis_ids)]
+        
+        raw_data = self.eval_dataset.dataset
+        group_size = len(raw_data["candidates"][0])
+        results = np.array(results).reshape(-1, group_size, 2)
+        sorted_indices = np.argsort(-results[:, :, 0], axis=1)
+        sorted_results = np.take_along_axis(results, sorted_indices[:, :, np.newaxis], axis=1)
+        preds = sorted_results[:, :25, 1].astype(int).tolist()
+        labels = [[self.eval_dataset.misconceptions_map[e]] for e in raw_data["label"]]
+
+        if self.args.process_index == 0:
+            metrics = [self.compute_metrics(preds, labels)]
+        else:
+            metrics = [None]
+            
+        # NOTE: broadcast across devices
+        dist.broadcast_object_list(metrics, src=0)
+        metrics = metrics[0]
+        self.accelerator.wait_for_everyone()
+
+        # Prefix all keys with metric_key_prefix + '_'
+        for key in list(metrics.keys()):
+            if not key.startswith(f"{metric_key_prefix}_") and key != "epoch":
+                metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
+
+        output = EvalLoopOutput(predictions=preds, metrics=metrics, label_ids=None, num_samples=len(preds))
+        self.log(output.metrics)
+        self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
+        self._memory_tracker.stop_and_update_metrics(output.metrics)
+
+        return output.metrics
