@@ -16,7 +16,7 @@ from transformers import (
 from peft import LoraConfig, TaskType, get_peft_model, PeftModel
 
 from reranker.Reranker_model import CrossEncoder
-from reranker.Reranker_data import TrainDatasetForRerank, GroupCollator
+from reranker.Reranker_data import TrainDatasetForRerank, GroupCollator, ValDatasetForRerank
 from reranker.Rerannker_trainer import RerankTrainer as Trainer
 from utils import print_rank_0, get_optimizer_grouped_parameters, mapk, recall
 
@@ -162,7 +162,7 @@ def train():
 
     # prepare data
     train_dataset = TrainDatasetForRerank(data_args, tokenizer, "train")
-    val_dataset = TrainDatasetForRerank(data_args, tokenizer, "val")
+    val_dataset = ValDatasetForRerank(data_args, tokenizer)
 
     trainer = Trainer(
         args=training_args,
