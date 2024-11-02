@@ -47,6 +47,9 @@ class DataArguments:
     val_data_path: str = field(
         default="data/split/val.csv", metadata={"help": "Path to the validation data."}
     )
+    misconception_mapping: str = field(
+        default="data/misconception_mapping.csv", metadata={"help": "Path to the misconception mapping."}
+    )
     max_length: int = field(
         default=1024,
         metadata={

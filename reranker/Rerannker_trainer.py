@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 from transformers.trainer import Trainer
 from transformers.trainer_utils import EvalLoopOutput
 
-from Reranker_data import ValCollator
+from .Reranker_data import ValCollator
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,9 @@ class RerankTrainer(Trainer):
         model_base = self.model.module if hasattr(self.model, 'module') else self.model
         model_base = model_base.model
 
+        raw_data = self.eval_dataset.dataset
+        group_size = len(raw_data[0]["candidates"])
+
         data_collator = ValCollator(self.data_collator.tokenizer)
         eval_dataloader = DataLoader(
             self.eval_dataset,
@@ -58,21 +61,23 @@ class RerankTrainer(Trainer):
         probas, mis_ids = [], []
         for _, batch in enumerate(tqdm(eval_dataloader, desc="Evaluating: ")):
             logits = model_base(**batch["inputs"]).logits
-            proba = logits.sigmoid()
-            proba = self.accelerator.gather_for_metrics(proba.contiguous())
-            mis_id = self.accelerator.gather_for_metrics(batch["mis_ids"].contiguous()) 
-            probas.extend(proba.tolist())
-            mis_ids.extend(mis_id.tolist())
 
-        results = [(proba, mis_id) for proba, mis_id in zip(probas, mis_ids)]
-        
-        raw_data = self.eval_dataset.dataset
-        group_size = len(raw_data["candidates"][0])
-        results = np.array(results).reshape(-1, group_size, 2)
+            # It is neccessary to reshape the logits to the original shape with the first dimension as the batch size.
+            # Because the gather_for_metrics() function will automatically removes the duplicated data according to the 
+            # total length of the data. And will save the last batch as [:len(dataset) - process_index * batch_size]. 
+            proba = logits.sigmoid().reshape(-1, group_size)
+            mis_id = np.array(batch["mis_ids"]).reshape(-1, group_size)
+
+            proba = self.accelerator.gather_for_metrics(proba.contiguous())
+            mis_id = self.accelerator.gather_for_metrics(mis_id) 
+            probas.extend(proba.tolist())
+            mis_ids.extend(mis_id)
+
+        results = np.stack([probas, mis_ids], axis=2, dtype=np.float32)
         sorted_indices = np.argsort(-results[:, :, 0], axis=1)
         sorted_results = np.take_along_axis(results, sorted_indices[:, :, np.newaxis], axis=1)
         preds = sorted_results[:, :25, 1].astype(int).tolist()
-        labels = [[self.eval_dataset.misconceptions_map[e]] for e in raw_data["label"]]
+        labels = [[self.eval_dataset.misconception_map[e]] for e in raw_data["label"]]
 
         if self.args.process_index == 0:
             metrics = [self.compute_metrics(preds, labels)]
