@@ -27,10 +27,13 @@ class TrainDatasetForEmbedding(Dataset):
     def __len__(self):
         return self.total_len
 
+    def get_detailed_instruct(self, task_description: str, query: str) -> str:
+        return f'Instruct: {task_description}\nQuery: {query}'
+
     def __getitem__(self, item) -> Tuple[str, List[str]]:
         query = self.dataset[item]['query']
         if self.args.query_instruction is not None:
-            query = self.args.query_instruction + query
+            query = self.get_detailed_instruct(self.args.query_instruction, query)
 
         passages = []
 
@@ -138,6 +141,7 @@ class plain_processor:
         max_length: int,
         misconception_mapping: str,
         add_eos_token: bool = True,
+        query_instruction: Optional[str] = None,
     ):
         self.tokenizer = tokenizer
         self.add_eos_token = add_eos_token
@@ -148,10 +152,17 @@ class plain_processor:
             row["MisconceptionName"]: row["MisconceptionId"]
             for _, row in misconception_mapping.iterrows()
         }
+
+        self.query_instruction = query_instruction
+
+    def get_detailed_instruct(self, task_description: str, query: str) -> str:
+        return f'Instruct: {task_description}\nQuery: {query}'
     
     def __call__(self, batch_data):
         querys, pos_samples = [], []
         for q, p in zip(batch_data["query"], batch_data["pos"]):
+            if self.query_instruction is not None:
+                q = self.get_detailed_instruct(self.query_instruction, q)
             querys.append(q)
             assert len(p) == 1, "Only one positive sample is allowed in plain processor"
             pos_samples.append(p[0])

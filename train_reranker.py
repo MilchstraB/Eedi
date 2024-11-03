@@ -56,10 +56,9 @@ class DataArguments:
             "help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
         },
     )
-    template: str = field(
-        default="<|im_start|>{QUERY}\n\n{DOC}<|im_end|>", metadata={"help": "Template for the input text."}
-    )
     add_eos_token: bool = field(default=False)
+    query_instruction: str = field(default=None, metadata={"help": "Instruction before query."})
+    passage_instruction: str = field(default=None, metadata={"help": "Instruction before retrieval passages."})
 
 
 @dataclass

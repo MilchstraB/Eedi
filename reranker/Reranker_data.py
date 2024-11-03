@@ -42,17 +42,26 @@ class TrainDatasetForRerank(Dataset):
 
     def __len__(self):
         return self.total_len
+    
+    def get_detailed_instruct(self, task_description: str, query: str) -> str:
+        return f'Instruct: {task_description}\nQuery: {query}'
 
     def __getitem__(self, item) -> Tuple[str, List[str]]:
         query = self.dataset[item]['query']
+        if self.args.query_instruction is not None:
+            query = self.get_detailed_instruct(self.args.query_instruction, query)
         batch_data = []
 
         assert isinstance(self.dataset[item]['pos'], list)
         pos = random.choice(self.dataset[item]['pos'])
+        if self.args.passage_instruction is not None:
+            pos = self.args.passage_instruction + pos
         batch_data.append(self.create_one_example(query, pos))
 
         negs = self.dataset[item]['neg']
         for neg in negs:
+            if self.args.passage_instruction is not None:
+                neg = self.args.passage_instruction + neg
             batch_data.append(self.create_one_example(query, neg))
 
         return batch_data
@@ -109,12 +118,16 @@ class ValDatasetForRerank(Dataset):
 
     def __getitem__(self, item) -> Tuple[str, List[str]]:
         query = self.dataset[item]['query']
+        if self.args.query_instruction is not None:
+            query = self.get_detailed_instruct(self.args.query_instruction, query)
         batch_data, mis_ids = [], []
 
         candidates = self.dataset[item]['candidates']
         for c in candidates:
-            batch_data.append(self.create_one_example(query, c))
             mis_ids.append(self.misconception_map[c])
+            if self.args.passage_instruction is not None:
+                c = self.args.passage_instruction + c
+            batch_data.append(self.create_one_example(query, c))
 
         return batch_data, mis_ids
     
