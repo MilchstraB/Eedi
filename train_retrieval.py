@@ -178,6 +178,7 @@ def train():
         data_args.max_length,
         data_args.misconception_mapping,
         add_eos_token=data_args.add_eos_token,
+        query_instruction=data_args.query_instruction,
     )
     text_dataset = text_dataset.map(plain_preprocess, batched=True, remove_columns=text_dataset.column_names)
 
@@ -186,6 +187,7 @@ def train():
         tokenizer, 
         data_args.max_length,
         add_eos_token=data_args.add_eos_token,
+        passage_instruction=data_args.passage_instruction,
     )
     misconception_mapping = misconception_mapping.map(mis_preprocess, batched=True, remove_columns=misconception_mapping.column_names)
 

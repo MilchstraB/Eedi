@@ -68,13 +68,17 @@ class misconception_processor:
         tokenizer: AutoTokenizer,
         max_length: int,
         add_eos_token: bool = True,
+        passage_instruction: Optional[str] = None,
     ):
         self.tokenizer = tokenizer
         self.add_eos_token = add_eos_token
         self.max_length = max_length - 1 if add_eos_token else max_length
+        self.passage_instruction = passage_instruction
     
     def __call__(self, batch_data):
         batch_data = batch_data["MisconceptionName"]
+        if self.passage_instruction is not None:
+            batch_data = [self.passage_instruction + text for text in batch_data]
         results = defaultdict(list)
         outputs = self.tokenizer(
             batch_data,
