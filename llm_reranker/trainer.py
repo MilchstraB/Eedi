@@ -9,9 +9,9 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset
 from transformers.trainer import Trainer
 from transformers.trainer_utils import EvalLoopOutput
-from transformers.deepspeed import is_deepspeed_zero3_enabled
+from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 
-from .Reranker_data import ValCollator
+from .data import ValCollator
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class RerankTrainer(Trainer):
 
         probas, mis_ids = [], []
         for _, batch in enumerate(tqdm(eval_dataloader, desc="Evaluating: ")):
-            logits = self.model.encode(**batch["inputs"])
+            logits = self.model.encode(batch["inputs"])
 
             # It is neccessary to reshape the logits to the original shape with the first dimension as the batch size.
             # Because the gather_for_metrics() function will automatically removes the duplicated data according to the 

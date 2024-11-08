@@ -41,13 +41,13 @@ class BiEncoderModel(nn.Module):
     def enable_input_require_grads(self, **kwargs):
         self.model.enable_input_require_grads(**kwargs)
 
-    def encode(self, input_ids, attention_mask, labels):
+    def encode(self, inputs):
         outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
             return_dict=True
         )
-        _, max_indices = torch.max(labels, dim=1)
+        _, max_indices = torch.max(inputs["labels"], dim=1)
         # Output the probability distribution of the next token at the current position.
         # Move right one unit.
         predict_indices = max_indices - 1
@@ -56,8 +56,8 @@ class BiEncoderModel(nn.Module):
         scores = logits[:, self.yes_loc]
         return scores.contiguous()
 
-    def forward(self, input_ids, attention_mask, labels):
-        logits = self.encode(input_ids, attention_mask, labels)
+    def forward(self, inputs):
+        logits = self.encode(inputs)
 
         scores = logits.view(
             self.per_device_train_batch_size,

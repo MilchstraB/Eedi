@@ -1,5 +1,6 @@
 import os
 import random
+import numpy as np
 import pandas as pd
 from typing import List, Tuple, Dict
 from dataclasses import dataclass
@@ -8,7 +9,7 @@ import torch
 from torch.utils.data import Dataset
 
 import datasets
-from transformers import AutoTokenizer, DataCollatorWithPadding, BatchEncoding
+from transformers import AutoTokenizer, DataCollatorForSeq2Seq, BatchEncoding
 
 
 class TrainDatasetForRerank(Dataset):
@@ -62,13 +63,47 @@ class TrainDatasetForRerank(Dataset):
 
  
 @dataclass
-class GroupCollator(DataCollatorWithPadding):
-    def __call__(
-        self, features
-    ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+class RerankCollator(DataCollatorForSeq2Seq):
+    """
+    Wrapper that does conversion from List[Tuple[encode_qry, encode_psg]] to List[qry], List[psg]
+    and pass batch separately to the actual collator.
+    Abstract out data detail for the model.
+    """
+    def __call__(self, features):
         if isinstance(features[0], list):
             features = sum(features, [])
-        return super().__call__(features)
+
+        labels = [feature["labels"] for feature in features] if "labels" in features[0].keys() else None
+        # We have to pad the labels before calling `tokenizer.pad` as this method won't pad them and needs them of the
+        # same length to return tensors.
+        if labels is not None:
+            max_label_length = max(len(l) for l in labels)
+            if self.pad_to_multiple_of is not None:
+                max_label_length = (
+                    (max_label_length + self.pad_to_multiple_of - 1)
+                    // self.pad_to_multiple_of
+                    * self.pad_to_multiple_of
+                )
+
+            padding_side = self.tokenizer.padding_side
+            for feature in features:
+                remainder = [self.label_pad_token_id] * (max_label_length - len(feature["labels"]))
+                if isinstance(feature["labels"], list):
+                    feature["labels"] = (
+                        feature["labels"] + remainder if padding_side == "right" else remainder + feature["labels"]
+                    )
+                elif padding_side == "right":
+                    feature["labels"] = np.concatenate([feature["labels"], remainder]).astype(np.int64)
+                else:
+                    feature["labels"] = np.concatenate([remainder, feature["labels"]]).astype(np.int64)
+
+        collated = self.tokenizer.pad(
+            features,
+            padding="longest",
+            return_tensors="pt",
+        )
+
+        return {"inputs": collated}
     
 
 class ValDatasetForRerank(Dataset):
@@ -122,17 +157,43 @@ class ValDatasetForRerank(Dataset):
 
 
 @dataclass
-class ValCollator(DataCollatorWithPadding):
-    def __call__(
-        self, features
-    ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+class ValCollator(RerankCollator):
+    def __call__(self, features):
         batch_data = [f[0] for f in features]
         mis_ids = [f[1] for f in features]
-
         if isinstance(batch_data[0], list):
-            batch_data = sum(batch_data, [])
+            features = sum(batch_data, [])
         if isinstance(mis_ids[0], list):
             mis_ids = sum(mis_ids, [])
 
-        batch_data = self.tokenizer.pad(batch_data, padding="longest", return_tensors="pt")
-        return {"inputs": batch_data, "mis_ids": mis_ids}
+        labels = [feature["labels"] for feature in features] if "labels" in features[0].keys() else None
+        # We have to pad the labels before calling `tokenizer.pad` as this method won't pad them and needs them of the
+        # same length to return tensors.
+        if labels is not None:
+            max_label_length = max(len(l) for l in labels)
+            if self.pad_to_multiple_of is not None:
+                max_label_length = (
+                    (max_label_length + self.pad_to_multiple_of - 1)
+                    // self.pad_to_multiple_of
+                    * self.pad_to_multiple_of
+                )
+
+            padding_side = self.tokenizer.padding_side
+            for feature in features:
+                remainder = [self.label_pad_token_id] * (max_label_length - len(feature["labels"]))
+                if isinstance(feature["labels"], list):
+                    feature["labels"] = (
+                        feature["labels"] + remainder if padding_side == "right" else remainder + feature["labels"]
+                    )
+                elif padding_side == "right":
+                    feature["labels"] = np.concatenate([feature["labels"], remainder]).astype(np.int64)
+                else:
+                    feature["labels"] = np.concatenate([remainder, feature["labels"]]).astype(np.int64)
+
+        collated = self.tokenizer.pad(
+            features,
+            padding="longest",
+            return_tensors="pt",
+        )
+
+        return {"inputs": collated, "mis_ids": mis_ids}

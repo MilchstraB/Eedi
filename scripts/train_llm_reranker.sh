@@ -1,0 +1,34 @@
+deepspeed train_llm_reranker.py \
+    --model_name_or_path pretrain_model/Qwen2.5-Math-7B-Instruct \
+    --max_length 1024 \
+    --add_eos_token False \
+    --train_data_path data/retrieval/val_fold_1.json \
+    --val_data_path data/retrieval/val_fold_1.json \
+    --misconception_mapping data/misconception_mapping.csv \
+    --deepspeed ./scripts/zero2.json \
+    --lora_enable True \
+    --lora_r 16 \
+    --lora_alpha 32 \
+    --lora_dropout 0.05 \
+    --lora_target "[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\", \"gate_proj\", \"up_proj\", \"down_proj\"]" \
+    --gradient_checkpointing True \
+    --overwrite_output_dir True \
+    --save_strategy "steps" \
+    --save_steps 0.2 \
+    --save_only_model True \
+    --eval_steps 0.2 \
+    --eval_strategy "steps" \
+    --bf16_full_eval True \
+    --warmup_ratio 0.05 \
+    --logging_steps 0.005 \
+    --report_to "none" \
+    --bf16 True \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --gradient_accumulation_steps 2 \
+    --learning_rate 2e-4 \
+    --lr_scheduler_type "cosine" \
+    --train_group_size 11 \
+    --output_dir ./output \
+    --run_name reranker_fold_1
