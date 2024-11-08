@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 from transformers.trainer import Trainer
 from transformers.trainer_utils import EvalLoopOutput
 from transformers import DataCollatorWithPadding
+from transformers.deepspeed import is_deepspeed_zero3_enabled
 
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -136,8 +137,14 @@ class RetrievalTrainer(Trainer):
 
         model_to_save = self.model.module if hasattr(self.model, 'module') else self.model
         model_to_save = model_to_save.model
+        
+        if is_deepspeed_zero3_enabled():
+            prefix = "model."
+            assert all(k.startswith(prefix) for k in state_dict.keys()), list(state_dict.keys())
+            state_dict = {k[len(prefix):]: v for k, v in state_dict.items()}
+        
         model_to_save.save_pretrained(
-            output_dir, safe_serialization=self.args.save_safetensors
+            output_dir, safe_serialization=self.args.save_safetensors, state_dict=state_dict,
         )
 
         if self.tokenizer is not None:

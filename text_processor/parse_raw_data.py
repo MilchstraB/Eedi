@@ -8,6 +8,12 @@ import json
 import pandas as pd
 
 
+TEMPLATE = (
+    "Question: {question}\n\nConstruct Name: {brief_description}\n\n"
+    "Correct Answer: {correct_answer}\n\nIncorrect Answer: {incorrect_answer}"
+)
+
+
 def parse_data(raw_data, mode="llama"):
     assert mode in ["llama", "mistral"], "Invalid mode. Choose between 'llama' and 'mistral'."
 
@@ -38,22 +44,26 @@ def parse_data(raw_data, mode="llama"):
         loser = response_b_pattern.search(text).group(1).strip()
 
         if preferences == "B": winner, loser = loser, winner
-        parse_data.append({
+        meta_data = {
             "brief_description": brief_description,
             "question": question,
             "correct_answer": correct_answer,
             "incorrect_answer": incorrect_answer,
-            "positive": winner,
-            "negative": loser,
+        }
+
+        parse_data.append({
+            "query": TEMPLATE.format_map(meta_data),
+            "pos": [winner],
+            "neg": [loser],
         })
 
     return parse_data
 
 
 if __name__ == "__main__":
-    dest_path = "data/pair_preference_eedi_mistral.json"
-    raw_data = pd.read_parquet("data/pair_preference_eedi_mistral.parquet")
-    mode = "mistral"
+    dest_path = "data/pair_preference_eedi_llama.json"
+    raw_data = pd.read_parquet("data/pair_preference_eedi_llama.parquet")
+    mode = "llama"
 
     raw_data = raw_data["messages"].to_list()
     parse_data = parse_data(raw_data, mode)

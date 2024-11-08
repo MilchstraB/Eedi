@@ -50,9 +50,6 @@ class RerankTrainer(Trainer):
             return
         
         self.model.eval()
-        model_base = self.model.module if hasattr(self.model, 'module') else self.model
-        model_base = model_base.model
-
         raw_data = self.eval_dataset.dataset
         group_size = len(raw_data[0]["candidates"])
 
@@ -67,7 +64,7 @@ class RerankTrainer(Trainer):
 
         probas, mis_ids = [], []
         for _, batch in enumerate(tqdm(eval_dataloader, desc="Evaluating: ")):
-            logits = model_base(**batch["inputs"]).logits
+            logits = self.model.encode(**batch["inputs"])
 
             # It is neccessary to reshape the logits to the original shape with the first dimension as the batch size.
             # Because the gather_for_metrics() function will automatically removes the duplicated data according to the 
