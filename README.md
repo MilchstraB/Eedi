@@ -13,7 +13,7 @@ pip install -r requirements.txt
 
 ## Acknowledgements
 
-We would like to express our gratitude to the following projects
+Here, we express our deepest gratitude to the following individuals and projects, from which our solution has drawn significant inspiration!
 
 - [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding)
 
